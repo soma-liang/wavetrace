@@ -1,4 +1,4 @@
-import { config, simDB} from "../interact.js";
+import { config, simDB } from "../interact.js";
 import { ceiln, isInt, truncateTextToWidth } from "../core/util.js";
 import { WaveTable } from "./WaveTable.js";
 
@@ -58,12 +58,21 @@ function linearScale(domain, range) {
   }
 
   // Inverse: range -> domain
-  scale.invert = function(y) {
+  scale.invert = function (y) {
     return domainMin + ((y - rangeMin) / rangeSpan) * domainSpan;
   };
 
   return scale;
 }
+
+
+/**
+ * zoomInOut 放大缩小
+ * drawBitSignal 画Bit类型波形
+ * drawBusSignal 画Bus类型波形(未适配)
+ * drawAxis 画X轴
+ * drawCursor 画竖线
+ */
 export class WaveCanvas {
   constructor(waveTable) {
 
@@ -78,19 +87,21 @@ export class WaveCanvas {
     this.scrollTop = 0; // offset of the top of the canvas Unit: px.
     this.scrollLeft = 0; // offset of the left of the canvas Unit: px.
     this.timeScale = 1.0; // Ratio: simulation time units per pixel. Unit: px/simTimeUnit.
-    this.cursorTime = 0; // The time of the cursor in simulation time units. Unit: simTimeUnit.
+    this.cursorTimeA = 0; // The time of the cursor in simulation time units. Unit: simTimeUnit.
+    this.cursorTimeB = 0;
 
-    this.canvas = document.getElementById('wave-axis-canvas'); 
+    this.canvas = document.getElementById('wave-axis-canvas');
 
     this._renderScheduled = false;
+
   }
 
   init() {
   }
 
-  reload(render=false) {
+  reload(render = false) {
     console.log("Reloading waveform display", { render });
-    
+
   }
 
   setScrollTop(scrollTop) {
@@ -98,11 +109,27 @@ export class WaveCanvas {
     this.scrollTop = scrollTop;
   }
 
+  /**
+   * 设置左偏移量
+   * @param {*} scrollLeft 
+   */
   setLeftOffset(scrollLeft) {
     // Set the scroll position of the wave display
-    this.scrollLeft = scrollLeft;
+    const maxScroll = this.getMaxScroll(); // 添加此方法
+    this.scrollLeft = Math.max(0, Math.min(scrollLeft, maxScroll));
     console.log("Set scroll left to:", scrollLeft);
-    console.log("Render range set to:", this.renderRange);
+  }
+
+  getMaxScroll() {
+    return (this.timeScale * simDB.now) - this.canvas.width;
+  }
+
+  /**
+   * 当前左偏移量
+   * @returns 
+   */
+  getLeftOffset() {
+    return this.scrollLeft
   }
 
   refresh() {
@@ -115,7 +142,7 @@ export class WaveCanvas {
    * * Positive values zoom in, negative values zoom out.
    * * default is 0.3: zoomIn 30%
    */
-  zoomInOut(delta=0.3, fixPointX=-1) {
+  zoomInOut(delta = 0.3, fixPointX = -1) {
     const deltaRatio = delta + 1
     if (fixPointX < 0) {
       // If no fix point is given, use the center of the canvas
@@ -123,7 +150,7 @@ export class WaveCanvas {
     } else if (fixPointX > this.canvas.width) {
       // If the fix point is outside the canvas, clamp it to the canvas width
       fixPointX = this.canvas.width;
-    } 
+    }
 
     const oldTimeScale = this.timeScale;
     const newTimeScale = this.timeScale * deltaRatio;
@@ -201,7 +228,7 @@ export class WaveCanvas {
    * @param {number} x - The x-coordinate in pixels (relative to the left edge of the canvas)
    * @returns {number} - The time in simulation time units
    */
-  getTimeFromX(x){
+  getTimeFromX(x) {
     return (x + this.scrollLeft) / this.timeScale;
   }
 
@@ -209,28 +236,40 @@ export class WaveCanvas {
    * Set the cursor time in simulation time units.
    * @param {number} time - The time in simulation time units
    */
-  setCursorTime(time) {
+  setCursorTime(time, cursorTimeSwitch) {
     if (time < 0) {
       console.error("Invalid cursor time:", time);
       return;
     }
-    this.cursorTime = time;
+    if (cursorTimeSwitch === "") {
+      return;
+    } else if (cursorTimeSwitch === "A") {
+      this.cursorTimeA = time;
+    } else if (cursorTimeSwitch === "B") {
+      this.cursorTimeB = time;
+    }
   }
 
   /**
    * Get the cursor time in simulation time units.
    * @return {number} time - The time in simulation time units
    */
-  getCursorTime() {
-    return this.cursorTime;
+  getCursorTime(cursorTimeSwitch) {
+    if (cursorTimeSwitch === "") {
+      return 0
+    } else if (cursorTimeSwitch === "A") {
+      return this.cursorTimeA;
+    } else if (cursorTimeSwitch === "B") {
+      return this.cursorTimeB;
+    }
   }
-  
+
   /**   * Adjust the width of the wave-time-placeholder element based on the current time scale.
    * This is used to visually represent the current simulation time in the waveform display.
    * And fill the space for horisontal scroll bar.
-   */ 
+   */
   adjustWaveTimePlaceholder() {
-      // Set the width of the wave-time-placeholder element
+    // Set the width of the wave-time-placeholder element
     const waveTimePlaceholder = document.getElementById('wave-time-placeholder');
     if (waveTimePlaceholder) {
       waveTimePlaceholder.style.width = (this.timeScale * simDB.now) + "px";
@@ -238,7 +277,7 @@ export class WaveCanvas {
     else {
       console.error("Wave time placeholder element not found");
     }
-  } 
+  }
 
 
   /**
@@ -257,7 +296,7 @@ export class WaveCanvas {
       bottom: this.scrollTop + this.canvas.height
     };
     // Example: render each row in waveTable.rows
-    const rowsToPlot = this.waveTable.getRows({hidden:false, content:true});
+    const rowsToPlot = this.waveTable.getRows({ hidden: false, content: true });
     rowsToPlot.forEach((row, rowIdx) => {
       const waveStyle = row.waveStyle;
       const rowHeight = config.rowHeight;
@@ -265,23 +304,23 @@ export class WaveCanvas {
 
       // // Skip rows that are not in the visible range
       if (yBase + rowHeight < visibleRangeY.top || yBase > visibleRangeY.bottom) {
-        return; 
+        return;
       }
 
       const selected = this.waveTable.isSelected(row.id)
       // draw light gray background for the selected signals:
       if (selected) {
         ctx.fillStyle = "rgba(200, 200, 200, 0.19)";
-        ctx.fillRect(0, yBase-this.scrollTop, this.canvas.width, rowHeight);
+        ctx.fillRect(0, yBase - this.scrollTop, this.canvas.width, rowHeight);
       }
 
       if (waveStyle === 'bit') {
         // Draw bit wave as rectangles
         // setTimeout(() => {
-          this.drawBitSignal(ctx, row, yBase-this.scrollTop, this.scrollLeft, this.timeScale, selected);
+        this.drawBitSignal(ctx, row, yBase - this.scrollTop, this.scrollLeft, this.timeScale, selected);
         // },0);
       } else if (waveStyle === 'bus') {
-          this.drawBusSignal(ctx, row, yBase-this.scrollTop, this.scrollLeft, this.timeScale, selected);
+        this.drawBusSignal(ctx, row, yBase - this.scrollTop, this.scrollLeft, this.timeScale, selected);
       } else {
         // Unsupported style
         ctx.fillStyle = "rgba(150,70,60,0.5)";
@@ -290,7 +329,8 @@ export class WaveCanvas {
         ctx.fillText(`Unsupported: ${waveStyle}`, 10, yBase + config.rowHeight / 2);
       }
     });
-    this.drawCursor(ctx, this.cursorTime, this.scrollLeft, this.timeScale);
+
+    this.drawCursor(ctx, this.cursorTimeA, this.cursorTimeB, this.scrollLeft, this.timeScale);
     this.drawAxis(ctx, this.scrollLeft, this.timeScale);
   }
 
@@ -318,17 +358,29 @@ export class WaveCanvas {
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
 
-
     // Find indices in wave that are within the visible time range
     // getChangeIndexAt returns -1 if the time is before the first change.
     // in this case we start plot at the first change.
-    const startIdx = Math.max(0, signal.getChangeIndexAt(timeRange[0]));
-    
-    for (let i = startIdx; i < signal.wave.length; i++) {
+    const startIdx = 0;
+    // const startIdx = Math.max(0, signal.getChangeIndexAt(timeRange[0]));
+
+    console.log('gggg', startIdx, timeRange[0])
+    const visiblePoints = this.filterByTimeRange(signal.wave, timeRange[0], timeRange[1])
+    // const visiblePoints = signal.wave.filter(
+    //   tv => tv.time >= timeRange[0] && tv.time <= timeRange[1]
+    // );
+    const pointsPerPixel = Math.ceil(visiblePoints.length / this.canvas.width);
+    console.log('ppppppLLLLL', pointsPerPixel, visiblePoints.length, this.canvas.width)
+    const sampledPoints = pointsPerPixel > 1 ?
+      this.downsampleLTTB(visiblePoints, this.canvas.width) :
+      visiblePoints;
+    signal.showWave = sampledPoints;
+
+    for (let i = startIdx; i < signal.showWave.length; i++) {
       // segment values:
       const now = simDB.now;
       const t0 = signal.getTimeAtI(i, now);
-      const t1 = signal.getTimeAtI(i+1, now);
+      const t1 = signal.getTimeAtI(i + 1, now);
       const v0 = signal.getValueAtI(i);
 
       // trasform to pixel coordinates
@@ -336,11 +388,11 @@ export class WaveCanvas {
       let x1 = t1 * timeScale - xOffset;
       let y0r = valueScale(parseIntDef(v0));
       let y0abbs = y0r + yOffset;
-      let {line_color, shadow_color} = ctx.fillStyle = value2Color(v0, selected);
+      let { line_color, shadow_color } = ctx.fillStyle = value2Color(v0, selected);
 
       // --- Rectangle (transRect) ---
       ctx.fillStyle = shadow_color;
-      const rectHeight = valueScale(1-parseIntDef(v0))-bitWavePadding;
+      const rectHeight = valueScale(1 - parseIntDef(v0)) - bitWavePadding;
       ctx.fillRect(x0, y0abbs, x1 - x0, rectHeight);
 
       // --- Horizontal line (timeholder) ---
@@ -398,7 +450,7 @@ export class WaveCanvas {
       // segment values:
       const now = simDB.now;
       const t0 = signal.getTimeAtI(i, now);
-      const t1 = signal.getTimeAtI(i+1, now);
+      const t1 = signal.getTimeAtI(i + 1, now);
       const v0 = signal.getValueAtI(i);
 
       // trasform to pixel coordinates
@@ -407,17 +459,17 @@ export class WaveCanvas {
       let zero = valueScale(0) + yOffset;
       let x0 = t0 * timeScale - xOffset;
       let x1 = t1 * timeScale - xOffset;
-      let {line_color, _} = value2Color(v0, selected);
+      let { line_color, _ } = value2Color(v0, selected);
 
       // --- the 'hexagon' of the bus ---
       ctx.strokeStyle = line_color;
       ctx.beginPath();
       ctx.moveTo(x0, half);
-      ctx.lineTo(x0+2, one);
-      ctx.lineTo(x1-2, one);
+      ctx.lineTo(x0 + 2, one);
+      ctx.lineTo(x1 - 2, one);
       ctx.lineTo(x1, half);
-      ctx.lineTo(x1-2, zero);
-      ctx.lineTo(x0+2, zero);
+      ctx.lineTo(x1 - 2, zero);
+      ctx.lineTo(x0 + 2, zero);
       ctx.lineTo(x0, half);
       ctx.lineCap = "round";
       ctx.stroke();
@@ -431,10 +483,10 @@ export class WaveCanvas {
       // in the middel of the visible area
       const x0satured = Math.max(x0, 0);
       const x1satured = Math.min(x1, this.canvas.width);
-      const xpos = (x0satured + x1satured)/ 2;
+      const xpos = (x0satured + x1satured) / 2;
       const txt = row.getValueAtI(i);
       let truncedStr = truncateTextToWidth(ctx, txt, x1satured - x0satured - 4);
-      ctx.fillText(truncedStr, xpos, zero-1);
+      ctx.fillText(truncedStr, xpos, zero - 1);
     }
   }
 
@@ -464,9 +516,9 @@ export class WaveCanvas {
     // calculate the time step based on the time scale
     //  the labels should be more or less 50 pixels apart
     const orderOfMagnitude = Math.floor(Math.log10(timeScale));
-    let timeStep = Math.pow(10, -(orderOfMagnitude))*100;
+    let timeStep = Math.pow(10, -(orderOfMagnitude)) * 100;
     if (timeStep * timeScale > 200) {
-      timeStep = timeStep/2;
+      timeStep = timeStep / 2;
     }
 
     // Draw time labels and ticks at each time step
@@ -502,19 +554,31 @@ export class WaveCanvas {
    * @param {number} xOffset - The horizontal offset (pixels from top)
    * @param {number} timeScale - Ratio: simulation time units per pixel
    */
-  drawCursor(ctx, cursorTime, xOffset, timeScale) {
+  drawCursor(ctx, cursorTimeA, cursorTimeB, xOffset, timeScale) {
+    console.log('AAABBB', cursorTimeA, cursorTimeB)
     // Draw the cursor line at the current cursor time
-    const x = cursorTime * timeScale - xOffset;
-    if (x < 0 || x > this.canvas.width) {
-      return; // Cursor is out of bounds
+    const xA = cursorTimeA * timeScale - xOffset;
+    const xB = cursorTimeB * timeScale - xOffset;
+    if (xA >= 0 && xA <= this.canvas.width) {
+      ctx.strokeStyle = "rgba(251, 255, 0, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(xA, 0);
+      ctx.lineTo(xA, this.canvas.height);
+      ctx.setLineDash([5, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]); //重新设置实线
     }
-
-    ctx.strokeStyle = "rgba(251, 255, 0, 0.8)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, this.canvas.height);
-    ctx.stroke();
+    if (xB >= 0 && xB <= this.canvas.width) {
+      ctx.strokeStyle = "rgba(30, 255, 0, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(xB, 0);
+      ctx.lineTo(xB, this.canvas.height);
+      ctx.setLineDash([5, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
 
   /**
@@ -536,5 +600,155 @@ export class WaveCanvas {
   }
 
 
+
+  downsampleLTTB(data, threshold) {
+    console.log('pppppppdd', data.length)
+    const dataLength = data.length;
+    if (threshold >= dataLength || threshold === 0) {
+      return data;
+    }
+
+    // 初始化采样点数组
+    const sampled = [data[0]];
+
+    // 每个桶的大小
+    const bucketSize = (dataLength - 2) / (threshold - 2);
+
+    // 初始化点和桶索引
+    let pointIndex = 0;
+
+    // 遍历每个桶
+    for (let i = 0; i < threshold - 2; i++) {
+      // 计算当前桶的边界
+      const bucketStart = Math.floor((i) * bucketSize) + 1;
+      const bucketEnd = Math.floor((i + 1) * bucketSize) + 1;
+      const nextBucketStart = Math.floor((i + 1) * bucketSize) + 1;
+
+      // 计算当前桶和下一桶的平均点
+      const avgBucket = this.calculateAverage(data, bucketStart, bucketEnd);
+      const avgNextBucket = this.calculateAverage(data, nextBucketStart, nextBucketStart + bucketSize);
+
+      // 在桶内查找最符合三角形的点
+      let maxArea = -1;
+      let maxPointIndex = bucketStart;
+      const prevPoint = data[pointIndex];
+
+      // 遍历桶内的点
+      for (let j = bucketStart; j < bucketEnd; j++) {
+        const area = this.calculateTriangleArea(
+          this.convertToNumeric(data[j]),
+          avgBucket,
+          avgNextBucket,
+          prevPoint
+        );
+
+        if (area > maxArea) {
+          maxArea = area;
+          maxPointIndex = j;
+        }
+      }
+
+      // 添加选中的点到采样结果
+      sampled.push(data[maxPointIndex]);
+      pointIndex = maxPointIndex;
+    }
+
+    // 添加最后一个点
+    sampled.push(data[dataLength - 1]);
+    console.log('ppppppppp', data.length, sampled.length, data[0], sampled[0])
+    return sampled;
+  }
+
+  /**
+   * 计算区间的加权平均值
+   */
+  calculateAverage(data, start, end) {
+    let sumX = 0;
+    let sumY = 0;
+    let count = 0;
+
+    for (let i = start; i < end && i < data.length; i++) {
+      const point = data[i];
+      const numVal = this.convertToNumeric(point);
+
+      sumX += numVal.x;
+      sumY += numVal.y;
+      count++;
+    }
+
+    return {
+      x: sumX / count,
+      y: sumY / count
+    };
+  }
+
+  /**
+   * 将波形点转换为数值坐标（用于几何计算）
+   */
+  convertToNumeric(point) {
+    let y;
+    switch (point.bin) {
+      case "0": y = 0; break;
+      case "1": y = 1; break;
+      case "X": y = 0.5; break;
+      case "Z": y = 0.7; break;
+      default: y = 0.5;
+    }
+
+    return {
+      x: point.time,
+      y: y
+    };
+  }
+
+  /**
+   * 计算三角形面积（用于LTTB算法）
+   */
+  calculateTriangleArea(
+    point,
+    avgNext,
+    avgNextBucket,
+    prevPoint
+  ) {
+    const prev = this.convertToNumeric(prevPoint);
+    const area = 0.5 * Math.abs(
+      (prev.x - avgNext.x) * (point.y - prev.y) -
+      (prev.x - point.x) * (avgNext.y - prev.y)
+    );
+
+    return area;
+  }
+
+  /**
+   * 筛选出需要显示的波形数据
+   * @param {*} arr 波形中所有数据
+   * @param {*} t1 开始时间
+   * @param {*} t2 结束时间
+   * @returns 
+   */
+  filterByTimeRange(
+    arr,
+    t1,
+    t2
+  ) {
+    // 先筛选出在t1和t2之间的所有对象
+    const filtered = arr.filter(item => item.time >= t1 && item.time <= t2);
+
+    // 检查是否需要添加t1前一个对象
+    const hasT1 = arr.some(item => item.time === t1);
+    if (!hasT1) {
+      const prevItem = arr.slice().reverse().find(item => item.time < t1);
+      if (prevItem) filtered.unshift(prevItem);
+    }
+
+    // 检查是否需要添加t2后一个对象
+    const hasT2 = arr.some(item => item.time === t2);
+    if (!hasT2) {
+      const nextItem = arr.find(item => item.time > t2);
+      if (nextItem) filtered.push(nextItem);
+    }
+
+    return filtered;
+  }
 
 }

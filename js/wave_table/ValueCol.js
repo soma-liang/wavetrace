@@ -2,20 +2,20 @@ import $ from 'jquery';
 import { WaveTable } from "./WaveTable.js";
 
 export class ValueCol {
-  constructor(waveTable, init=true) {
+  constructor(waveTable, init = true) {
     /**  @type {String} */
     this.containerName = '#values-col-container-scroll';
     /**  @type {WaveTable} */
     this.waveTable = waveTable;
 
-    if(init){
+    if (init) {
       this.init();
     }
   }
 
-  init(){
+  init() {
     const self = this;
-    
+
     $(this.containerName).jstree("destroy").empty();
     $(this.containerName).jstree({
       'plugins': ['wholerow', 'dnd', 'changed'],
@@ -48,7 +48,7 @@ export class ValueCol {
     });
 
     setTimeout(() => {
-      
+
       this.reload();
     }, 100);
 
@@ -77,7 +77,7 @@ export class ValueCol {
     }, 10);
   }
 
-  refresh(){
+  refresh() {
     this._getTree().refresh();
   }
 
@@ -140,24 +140,24 @@ export class ValueCol {
   }
 
   showValuesAt(time) {
-    if(time === undefined){
-      time = this.waveTable.getCursorTime();
+    if (time !== undefined) {
+      // time = this.waveTable.getCursorTime();
+      this.waveTable.getRows().forEach(row => {
+        this._getTree().rename_node(this.toId(row.id), row.data.getValueAt(time));
+      });
     }
-    this.waveTable.getRows().forEach(row => {
-      this._getTree().rename_node(this.toId(row.id), row.data.getValueAt(time));
-    });
   }
 
-  toId(rowId){
+  toId(rowId) {
     return `signal-value-${rowId}`;
   }
-  
-  _getTree(arg = true){
+
+  _getTree(arg = true) {
     return $(this.containerName).jstree(arg);
   }
 
-  setRadix(rowId){
+  setRadix(rowId) {
     this.showValuesAt();
   }
-  
+
 }

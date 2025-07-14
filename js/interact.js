@@ -2,7 +2,7 @@ import $ from "jquery"
 import 'jquery-ui/dist/jquery-ui'; // https://stackoverflow.com/a/75920162/2506522
 import "jquery-ui/ui/widgets/resizable";
 import "jquery-contextmenu";
-import {VCDParser} from "./core/VCDParser.js";
+import { VCDParser } from "./core/VCDParser.js";
 import { SimDB } from "./core/SimDB.js";
 
 import { ObjectTree } from "./ObjectTree.js";
@@ -39,7 +39,7 @@ $(".demo-file-button").on('click', function () {
     dataType: "text",
     // ajax get XML Parsing Error: not well-formed
     // https://stackoverflow.com/a/56521064/2506522
-    beforeSend: (xhr) => {  xhr.overrideMimeType( "text/plain; charset=x-user-defined" );},
+    beforeSend: (xhr) => { xhr.overrideMimeType("text/plain; charset=x-user-defined"); },
     success: parseInitShow,
     error: function (xhr, status, error) {
       alert(`Error fetching demo file ${fname}: ${error}`);
@@ -166,9 +166,9 @@ function initShow(data) {
  * 
  * @param {text} vcdcontent 
  */
-function parseInitShow(vcdcontent){
+function parseInitShow(vcdcontent) {
   console.log("Parsing VCD content");
-  const vcdparser = new VCDParser({'vcdcontent': vcdcontent});
+  const vcdparser = new VCDParser({ 'vcdcontent': vcdcontent });
   const vcddata = vcdparser.getData();
   initShow(vcddata);
 }
@@ -257,7 +257,7 @@ function openFile(event) {
     const content = e.target.result;
     parseInitShow(content);
   };
-  
+
   reader.onerror = function (e) {
     alert(`Error reading file: ${e.target.error.message}`);
   };

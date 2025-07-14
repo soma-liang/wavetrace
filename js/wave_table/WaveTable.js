@@ -5,7 +5,7 @@ import { WaveformRow } from "../core/WaveformRow.js";
 import { NameCol } from "./NameCol.js";
 import { ValueCol } from "./ValueCol.js";
 import { WaveCanvas } from "./WaveCanvas.js";
-import { config} from "../interact.js";
+import { config } from "../interact.js";
 
 
 export class WaveTable {
@@ -13,6 +13,10 @@ export class WaveTable {
     if (simDB.constructor != SimDB) {
       throw "ERROR";
     }
+    this.isDragging = false;
+    this.dragTime = 0
+    this.lastX = 0;
+    this.cursorTimeSwitch = "B";
     this.simDB = simDB;
     /**  @type {Tree} */
     this.tree = new Tree();
@@ -33,7 +37,39 @@ export class WaveTable {
     resizeObserver.observe(this.waveAxisContainer);
     this._waveAxisResizeObserver = resizeObserver;
     this.attachZoomHandler();
-    this.waveAxisContainer.addEventListener('click', (event) => this.handleClickOnWaveAxis(event));
+    // this.waveAxisContainer.addEventListener('click', (event) => this.handleClickOnWaveAxis(event));
+
+    this.waveAxisContainer.addEventListener('mousedown', (e) => {
+      this.isDragging = true;
+      this.dragTime = Date.now()
+      this.lastX = e.clientX;
+      this.waveAxisContainer.style.cursor = 'grabbing';
+      e.preventDefault(); // 防止文本选中
+    })
+    let lastTrigger = 0;
+    this.waveAxisContainer.addEventListener('mousemove', (e) => {
+      if (!this.isDragging) return;
+      const now = Date.now()
+      if (now - lastTrigger >= 50) {
+        lastTrigger = now;
+        // 计算增量而非绝对位置
+        const deltaX = e.clientX - this.lastX;
+        this.lastX = e.clientX;
+        const maxScroll = this.waveAxisContainer.scrollWidth - this.waveAxisContainer.clientWidth;
+        const dampScroll = this.wave.getLeftOffset() - deltaX
+        const newScroll = dampScroll < 0 ? 0 : (dampScroll > maxScroll ? maxScroll : dampScroll)
+        this.wave.setLeftOffset(newScroll)
+        this.waveAxisContainer.scrollLeft = newScroll
+        this.wave.requestRender();
+      }
+    });
+    this.waveAxisContainer.addEventListener('mouseup', (e) => {
+      this.isDragging = false;
+      this.waveAxisContainer.style.cursor = 'default';
+      if (Date.now() - this.dragTime <= 200) {
+        this.handleClickOnWaveAxis(e)
+      }
+    });
   }
 
   /**
@@ -59,6 +95,7 @@ export class WaveTable {
    * Handles scroll events for the wave-axis-container.
    */
   handleHorizontalScroll() {
+    console.log('aaaaakkkkkkkkk', this.waveAxisContainer.scrollLeft)
     const scrollLeft = this.waveAxisContainer.scrollLeft;
     this.wave.setLeftOffset(scrollLeft);
     this.wave.requestRender();
@@ -84,6 +121,7 @@ export class WaveTable {
         e.preventDefault();
         // calculate zoom delta based on the wheel delta
         const delta = -e.deltaY / 1300 * 3; // deltaY is +/-138
+        console.log('MMMMMMM', e.clientX, e.deltaY, delta, fixPointX, rect)
         this.zoomInOut(delta, fixPointX);
 
       }
@@ -98,14 +136,15 @@ export class WaveTable {
     // The x position determines the time (and the position of the cursor) on the waveform
     const x = event.clientX - rect.left; // x position within the element
     const time = this.wave.getTimeFromX(x);
+    console.log('tttttttttt', time)
     this.moveCursorTo(time);
 
     // The y position gives the signal to be selected (and activated)
     const yBase = event.clientY - rect.top; // y position within the element
     const yAbbs = yBase + this.mainContainerScrolly.scrollTop; // y position within the entire wave axis container
-    const rowsToPlot = this.getRows({hidden:false, content:true});
+    const rowsToPlot = this.getRows({ hidden: false, content: true });
     var rowBottom = 0;
-    for(var row of rowsToPlot) {
+    for (var row of rowsToPlot) {
       // TODO each row could have different height...
       const rowHeight = config.rowHeight;
       rowBottom += rowHeight;
@@ -118,9 +157,9 @@ export class WaveTable {
         this.nameCol.selectRow(rowId);
         // this.valueCol.selectRow(rowId); <-- not needed Names col will call it...
         break;
-      } 
+      }
     }
-    
+
   }
 
   /**
@@ -130,16 +169,16 @@ export class WaveTable {
    * @param {number} fixPointX - The x position within the wave axis container to use as the fix point for zooming.
    * 
    */
-  zoomInOut(delta=0.3, fixPointX=-1) {
+  zoomInOut(delta = 0.3, fixPointX = -1) {
     let scroll = this.wave.zoomInOut(delta, fixPointX);
     if (scroll < 0) {
       scroll = 0;
     }
     this.wave.requestRender();
- 
+
     // otherwise, scroll the wave axis container, which will trigger the horizontal scroll event
     // scorll effectively the wave axis container DOM element
-    this.waveAxisContainer.scrollTo({left:scroll});
+    this.waveAxisContainer.scrollTo({ left: scroll });
   }
 
 
@@ -235,7 +274,7 @@ export class WaveTable {
     if (busAsBus && rowItem.waveStyle == "bus") {
       // If the signal is a bus, insert all sub-signals
       // in reversed: little-endian order.
-      for (var i = obj.signal.width-1; i > -1; i--) {
+      for (var i = obj.signal.width - 1; i > -1; i--) {
         const subObj = obj.cloneRange(i);
         const subRowItem = new WaveformRow(subObj);
         this.tree.insert(subRowItem.id, rowItem.id, position, subRowItem);
@@ -342,13 +381,13 @@ export class WaveTable {
   }
 
   moveCursorTo(time) {
-    this.wave.setCursorTime(time);
+    this.wave.setCursorTime(time, this.cursorTimeSwitch);
     this.valueCol.showValuesAt(time);
     this.wave.requestRender();
   }
 
   getCursorTime() {
-    return this.wave.getCursorTime();
+    return this.wave.getCursorTime(this.cursorTimeSwitch);
   }
 
 
@@ -359,7 +398,7 @@ export class WaveTable {
     const timeScale = width / this.simDB.now;
     // Workaround: calculate the delta scale based on the current zoom level
     const currentScale = this.wave.getTimeScale();
-    const deltaScale = timeScale / currentScale-1;
+    const deltaScale = timeScale / currentScale - 1;
     this.zoomInOut(deltaScale);
   }
 
@@ -368,10 +407,12 @@ export class WaveTable {
   }
 
   zoomIn() {
+    this.cursorTimeSwitch = "A"
     this.zoomInOut(0.3);
   }
 
   zoomOut() {
+    this.cursorTimeSwitch = "B"
     this.zoomInOut(-0.3);
   }
 }

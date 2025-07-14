@@ -12,7 +12,8 @@
     "jquery": "^3.7.1",
     "jquery-contextmenu": "^2.9.2",
     "jquery-ui": "^1.14.1",
-    "jstree": "^3.3.17"
+    "jstree": "^3.3.17",
+    "loadash": "^1.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.27.4",

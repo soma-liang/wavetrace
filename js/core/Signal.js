@@ -2,7 +2,8 @@
 import {
     binarySearch,
     bin2radix
-  } from './util.js';
+} from './util.js';
+import * as lodash from 'lodash'
 
 /**
  * Value change type builds up the wave list of the signal. Each element describes a value change of
@@ -26,7 +27,7 @@ import {
 */
 
 export class Signal {
-    constructor(sig){
+    constructor(sig) {
         /** @type {string[]} */
         this.references = sig.references;
         /** @type {string} */
@@ -35,49 +36,53 @@ export class Signal {
         /** @type {string} */
         this.type = sig.type;
         /** @type {valueChange_t[]} */
-        this.wave = sig.wave;
+        this.wave = lodash.cloneDeep(sig.wave)
         /** @type {number} */
         this.width = sig.width;
+        this.showWave = lodash.cloneDeep(sig.wave)
     }
 
-    cloneRange(from, to=-1){
-        if(to<0){
+    cloneRange(from, to = -1) {
+        if (to < 0) {
             to = from;
         }
-        if(from < to){
+        if (from < to) {
             // Big endian
             console.warn('Big endian not tested...')
         }
-        const nOfBits = Math.abs(from-to)+1;
-        if(nOfBits > this.width){
+        const nOfBits = Math.abs(from - to) + 1;
+        if (nOfBits > this.width) {
             throw `Cannot clone range [${from}:${to}] of signal ${this.references[0]} with width ${this.width}`;
         }
         const retType = (this.width == 1) ? 'bit' : 'bus';
         const ret = new Signal(
-            {references: this.references.concat([`[${from}:${to}]`]),
-             vcdid: `${this.vcdid}-cloned[${from}:${to}]`,
-             type: retType,
-             wave: [],
-             width: nOfBits
-        });
+            {
+                references: this.references.concat([`[${from}:${to}]`]),
+                vcdid: `${this.vcdid}-cloned[${from}:${to}]`,
+                type: retType,
+                wave: [],
+                showWave:[],
+                width: nOfBits
+            });
         // little endian conversion:
         const fromLE = this.width - 1 - from;
         const toLE = this.width - 1 - to;
         this.wave.forEach(wi => {
-            const retWi = {time: wi.time, bin: wi.bin.substring(fromLE, toLE+1)};
+            const retWi = { time: wi.time, bin: wi.bin.substring(fromLE, toLE + 1) };
             ret.wave.push(retWi);
         });
+        ret.showWave= this.showWave
         // ret.width = to-from+1;
         return ret;
     }
-    
+
     /**
      * @param {number} time 
      * @return {number} The index of the last change value before the given time.
      * If the time is before the first change, it returns -1.
      */
     getChangeIndexAt(time) {
-        var idx = binarySearch(this.wave, time, (time, wave) => {
+        var idx = binarySearch(this.showWave, time, (time, wave) => {
             return time - wave.time;
         })
         // Binary search returns the exact index if time is found,
@@ -95,7 +100,7 @@ export class Signal {
      * @param {number} time 
      * @param {number} def 
      */
-    getValueAt(time, radix, def='- NA -') {
+    getValueAt(time, radix, def = '- NA -') {
         const idx = this.getChangeIndexAt(time);
         return this.getValueAtI(idx, radix, def);
     }
@@ -104,38 +109,38 @@ export class Signal {
      * @param {number} i 
      * @param {number} def 
      */
-    getValueAtI(i, radix='bin', def) {
-        if (i < 0){
-            if(def !== undefined){
+    getValueAtI(i, radix = 'bin', def) {
+        if (i < 0) {
+            if (def !== undefined) {
                 return def;
             }
             throw 'Negative index';
         }
-        
-        if(this.wave[i][radix] === undefined){
-            this.wave[i][radix] = bin2radix(this.wave[i].bin, radix);
+
+        if (this.showWave[i][radix] === undefined) {
+            this.showWave[i][radix] = bin2radix(this.showWave[i].bin, radix);
         }
-        return this.wave[i][radix];
+        return this.showWave[i][radix];
     }
-    
+
     /**
      * @param {int} i 
      */
-    getTimeAtI(i, now=-1) {
-        if (i < 0){
+    getTimeAtI(i, now = -1) {
+        if (i < 0) {
             throw 'Negative index';
         }
-        if (i < this.wave.length){
-            return this.wave[i].time;
+        if (i < this.showWave.length) {
+            return this.showWave[i].time;
         }
-        if (i == this.wave.length){
+        if (i == this.showWave.length) {
             return now;
         }
         else {
             throw 'Index is too great';
         }
     }
-    
+
 }
 
 // export var mySignal = new Signal();
