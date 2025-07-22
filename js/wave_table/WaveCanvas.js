@@ -499,6 +499,7 @@ export class WaveCanvas {
    * @param {number} timeScale - Ratio: simulation time units per pixel
    */
   drawAxis(ctx, xOffset, timeScale) {
+    console.log('xOffset:',xOffset," timeScale:",timeScale)
     // Always draw the axis 15px above the bottom edge of the canvas
     const axisY = this.canvas.height - 25;
 
@@ -529,9 +530,10 @@ export class WaveCanvas {
     // Create a counter for ticks
     let tickIdx = 0;
 
+      console.log('tttttt',timeRange)
     for (let t = ceiln(timeRange[0], timeStep); t <= timeRange[1]; t += timeStep) {
       const x = (t - timeRange[0]) * timeScale;
-      ctx.fillText(t.toFixed(2), x + 2, axisY + 8);
+      ctx.fillText(simDB.convertTime(t), x + 2, axisY + 8);
       ctx.beginPath();
       ctx.moveTo(x, axisY);
 

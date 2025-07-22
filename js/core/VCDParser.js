@@ -19,11 +19,19 @@ export class VCDParser {
    */
   parse(vcdcontent) {
     const lines = vcdcontent.split(/\r?\n/);
+    let unit = ""
+    let gap = 0
     const signals = [];
     const idToSignal = {};
     let hierarchy = [];
     let currentTime = 0;
     let endtime = 0;
+
+    const timescaleRegex = /^\$timescale\s*(\d+)\s*([a-z]+)\s*\$end$/im;
+    const match = vcdcontent.match(timescaleRegex);
+    if (!match) return null;
+    gap = parseInt(match[1]);
+    unit = match[2];
 
     for (let line of lines) {
       line = line.trim();
@@ -77,6 +85,8 @@ export class VCDParser {
 
     return {
       signals,
+      gap: gap,
+      unit: unit,
       now: endtime,
       name: "dduummyy",
       type: "struct"
